@@ -1,121 +1,132 @@
-# Ralph Wiggum, Senior Software Engineer 🧑‍💻
+# Ralph — Multi-Agent Task Runner for Claude Code CLI
 
-Meet Ralph Wiggum — Senior Software Engineer, 15+ years of experience, expert in cloud-native paste-eating architectures, former Staff Engineer at Crayons.io, and current holder of the world record for "most consecutive all-nighters without ever asking for a promotion."
+Ralph is a lightweight orchestrator that turns a PRD (Product Requirements Document) into working code by dispatching tasks to specialized [Claude Code CLI subagents](https://code.claude.com/docs/en/sub-agents).
 
-While real senior devs are busy:
-- Writing 47-page design docs nobody reads
-- Arguing about dependency injection in Slack
-- Quietly pushing `console.log("works on my machine")` to production
-- Demanding bonus and unlimited PTO
-
-Ralph just **loops**.  
-Fail → fix → fail → fix → commit → repeat.  
-No ego. No standups. No "let me circle back on that."  
-Just pure, adorable, unstoppable persistence powered by Claude and a couple of bash scripts.
-
-This is the **original external Ralph Loop** — the one that keeps sessions fresh, avoids context drift, and turns your AI into a gremlin that codes while you sleep. Because why pay a senior six figures when Ralph will do it for API credits and a gold star?
+You write the plan. You define the agents. Ralph loops through the tasks, picks the right agent for each one, and gets it done — while you sleep.
 
 ![Ralph Wiggum, Senior Software Engineer](ralph.png)
 
-## What's Inside?
+## How It Works
 
-- **`gen-prd.sh`** – Ralph writes a beautiful PRD (usually better than the ones from your last architecture review).
-- **`PRD.md`** – The single source of truth. Ralph treats it like his Valentine from Lisa. Must include a task table with a **Responsável** (responsible agent) column.
-- **`progress.txt`** – Ralph's little diary: "Today I made the button work. I'm special!"
-- **`ralph-once.sh`** – Dispatch one task to the right agent. Perfect for watching Ralph think.
-- **`ralph-afk.sh`** – Fire and forget. Give it a number and go touch grass. Ralph doesn't need breaks.
+Each iteration has two phases:
 
-## How It Works (Multi-Agent Dispatch)
-
-Ralph reads your PRD, finds the next task, identifies the responsible agent, and calls `claude --agent <name>` to execute it. Each agent is a registered Claude Code CLI subagent.
+1. **Dispatch** — Claude reads `PRD.md` + `progress.txt`, identifies the next incomplete task (respecting dependencies), and determines the responsible agent.
+2. **Execute** — Ralph calls `claude --agent <name>` with the registered subagent, which implements the task, runs tests, commits, and updates `progress.txt`.
 
 ```
-1. PRD.md + progress.txt
-         |
-         v
-2. Dispatch: Claude identifies next task + responsible agent
-         |
-         v
-3. Validates that .claude/agents/{agent}.md exists
-         |
-         v
-4. Execute: claude --agent {agent} implements, tests, commits
-         |
-         v
-5. Updates progress.txt
-         |
-         v
-6. Loop (ralph-afk.sh) or stop (ralph-once.sh)
+PRD.md + progress.txt
+        |
+        v
+  Dispatch (claude -p)
+  "Next task: 1.2 | Agent: backend"
+        |
+        v
+  Validate .claude/agents/backend.md exists
+        |
+        v
+  Execute (claude --agent backend)
+  Implements, tests, commits, updates progress
+        |
+        v
+  Loop or stop
 ```
 
-### PRD Task Table Format
+## Prerequisites
 
-Your PRD must have a task table with a **Responsável** (or Responsible) column. The agent name will be normalized to lowercase with hyphens. Example:
+- [Claude Code CLI](https://code.claude.com/docs/en/overview) installed and authenticated
+
+## Project Structure
+
+```
+your-project/
+├── .claude/
+│   └── agents/          # Your subagent definitions (you create these)
+│       ├── backend.md
+│       ├── devops.md
+│       └── ...
+├── PRD.md               # Your task plan with agent assignments
+├── progress.txt         # Auto-updated log of completed tasks
+├── gen-prd.sh           # Optional: generate PRD with Claude
+├── ralph-once.sh        # Run one task
+└── ralph-afk.sh         # Run N tasks in a loop
+```
+
+## Quick Start
+
+### 1. Write your PRD
+
+Create a `PRD.md` with a task table. Each task must have a **Responsavel** (or Responsible) column indicating which agent handles it:
 
 ```markdown
-| #   | Task                          | Responsável  | Estimate | Depends on |
-|-----|-------------------------------|--------------|----------|------------|
-| 1.1 | Create docker-compose.yml     | **DevOps**   | 4h       | -          |
-| 1.2 | Setup FastAPI project          | **Backend**  | 3h       | 1.1        |
-| 1.3 | Setup Next.js project          | **Frontend** | 3h       | 1.1        |
+| #   | Task                      | Responsavel  | Estimate | Depends on |
+|-----|---------------------------|--------------|----------|------------|
+| 1.1 | Create docker-compose.yml | **DevOps**   | 4h       | -          |
+| 1.2 | Setup FastAPI project      | **Backend**  | 3h       | 1.1        |
+| 1.3 | Setup Next.js project      | **Frontend** | 3h       | 1.1        |
+| 1.4 | Validate environment       | **QA**       | 2h       | 1.1-1.3    |
 ```
 
-### Setting Up Agents
+Or use `gen-prd.sh` to generate one (edit the prompt inside first):
 
-Before running Ralph, you must create your agents in `.claude/agents/` using the Claude Code CLI subagent format. Each agent is a Markdown file with YAML frontmatter:
+```bash
+./gen-prd.sh
+```
+
+### 2. Create your agents
+
+For each role in your PRD, create a file in `.claude/agents/` following the [Claude Code CLI subagent format](https://code.claude.com/docs/en/sub-agents):
 
 ```markdown
 ---
 name: backend
-description: Use this agent for backend tasks (APIs, database, Python)
+description: Use this agent for backend tasks
 model: inherit
 permissionMode: bypassPermissions
 ---
 
-You are a Senior Backend Engineer. Implement the assigned task fully.
-After completing, commit with prefix [backend] and update progress.txt.
+You are a Senior Backend Engineer.
+Implement the assigned task fully, run tests, commit with prefix [backend],
+and update progress.txt.
 ```
 
-The `name` field must match the normalized agent name from your PRD (e.g., "DevOps" in the PRD → `devops` → `.claude/agents/devops.md` with `name: devops`).
+The `name` must match the role from your PRD, normalized to lowercase with hyphens (e.g., "DevOps" becomes `devops`, "Front-End" becomes `front-end`).
 
-## Quick Start
+### 3. Run
 
-1. Make sure you have the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and an API key.
+**One task at a time** (babysitting mode):
 
-2. Create your agents in `.claude/agents/` (one `.md` file per role in your PRD).
+```bash
+./ralph-once.sh
+```
 
-3. Generate the PRD:
-   ```bash
-   ./gen-prd.sh
-   ```
-   (Edit the prompt inside for your own project — Ralph is very flexible.)
+**N tasks in a loop** (AFK mode):
 
-4. Try one step (babysitting mode):
-   ```bash
-   ./ralph-once.sh
-   ```
-   Watch Ralph dispatch the task to the right agent, implement it, commit, and update progress.
+```bash
+./ralph-afk.sh 50
+```
 
-5. Go full Ralph (AFK mode):
-   ```bash
-   ./ralph-afk.sh 50
-   ```
-   Come back later to a (hopefully) finished app. When all tasks are done, Ralph stops automatically!
+Ralph stops automatically when all tasks are complete.
 
-## Tips for Maximum Ralph
+## Scripts Reference
 
-- Write a rock-solid PRD first. Chat with Claude normally, then paste the final version.
-- Make sure the PRD task table has a clear **Responsável** column — Ralph uses it to pick the agent.
-- Create your `.claude/agents/` files before running. Ralph will error out if an agent is missing.
-- Keep tasks tiny and testable — that's how Ralph stays on track.
-- Watch the first few runs with `ralph-once.sh`. If Ralph starts writing placeholder code, gently remind him in the PRD.
-- Use `git log` to see Ralph's heroic journey — commits are prefixed with the agent name.
-- Unlike certain senior engineers, Ralph actually reads the error messages.
+| Script | Description |
+|--------|-------------|
+| `gen-prd.sh` | Generates a PRD using Claude in plan mode. Edit the prompt inside for your project. |
+| `ralph-once.sh` | Dispatches and executes exactly one task. Exits with 0 if all tasks are done. |
+| `ralph-afk.sh <N>` | Runs up to N iterations. Stops early if the PRD is complete. Retries on dispatch parse failures. |
 
-Ralph may not be the smartest dev on the block, but he **never gives up**.  
-And honestly? That's more than you can say for half the staff+ titles out there.
+## Error Handling
 
-Happy looping! 🎉
+- **Agent not found** — If a task's agent doesn't have a matching `.claude/agents/{name}.md` file, Ralph stops with a clear error message.
+- **Parse failure** — If the dispatch output can't be parsed, `ralph-once.sh` exits with error; `ralph-afk.sh` retries on the next iteration.
+- **All tasks complete** — Ralph exits cleanly with a success message.
+
+## Tips
+
+- Keep tasks small and specific. Ralph works best with well-scoped units of work.
+- Watch the first few runs with `ralph-once.sh` to make sure dispatch picks tasks correctly.
+- Use `git log` to follow progress — commits are prefixed with the agent name (e.g., `[backend]`, `[devops]`).
+- Tailor each agent's system prompt to your stack. The more specific the agent, the better the output.
 
 ## License
 
